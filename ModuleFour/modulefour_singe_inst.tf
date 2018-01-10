@@ -5,9 +5,11 @@
 variable "aws_access_key" {}
 variable "aws_secret_key" {}
 variable "private_key_path" {}
+
 variable "key_name" {
   default = "PluralsightKeys"
 }
+
 variable "network_address_space" {
   default = "10.1.0.0/16"
 }
@@ -15,7 +17,7 @@ variable "network_address_space" {
 variable "billing_code_tag" {}
 variable "environment_tag" {}
 variable "bucket_name" {}
-  
+
 variable "instance_count" {
   default = 1
 }
@@ -32,7 +34,6 @@ provider "aws" {
   access_key = "${var.aws_access_key}"
   secret_key = "${var.aws_secret_key}"
   region     = "us-east-1"
-  
 }
 
 ########################################
@@ -40,7 +41,7 @@ provider "aws" {
 ########################################
 
 data "aws_availability_zones" "available" {}
-  
+
 ##############################################
 # RESOURCES
 ##############################################
@@ -48,9 +49,9 @@ data "aws_availability_zones" "available" {}
 # NETWORKING #
 resource "aws_vpc" "vpc" {
   cidr_block = "${var.network_address_space}"
-  
+
   tags {
-    Name = "${var.environment_tag}-vpc"
+    Name        = "${var.environment_tag}-vpc"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
@@ -58,23 +59,23 @@ resource "aws_vpc" "vpc" {
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = "${aws_vpc.vpc.id}"
-  
+
   tags {
-    Name = "${var.environment_tag}-igw"
+    Name        = "${var.environment_tag}-igw"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
 }
 
 resource "aws_subnet" "subnet" {
-  count = "${var.subnet_count}"
-  cidr_block = "${cidrsubnet(var.network_address_space, 8, count.index +1)}"
-  vpc_id = "${aws_vpc.vpc.id}"
+  count                   = "${var.subnet_count}"
+  cidr_block              = "${cidrsubnet(var.network_address_space, 8, count.index +1)}"
+  vpc_id                  = "${aws_vpc.vpc.id}"
   map_public_ip_on_launch = true
-  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
-  
+  availability_zone       = "${data.aws_availability_zones.available.names[count.index]}"
+
   tags {
-    Name = "${var.environment_tag}-subnet-${count.index + 1}"
+    Name        = "${var.environment_tag}-subnet-${count.index + 1}"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
@@ -84,30 +85,30 @@ resource "aws_subnet" "subnet" {
 
 resource "aws_route_table" "rtb" {
   vpc_id = "${aws_vpc.vpc.id}"
-  
+
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = "${aws_internet_gateway.igw.id}"
   }
+
   tags {
-    Name = "${var.environment_tag}-vpc"
+    Name        = "${var.environment_tag}-vpc"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
 }
 
 resource "aws_route_table_association" "rta-subnet" {
-  count = "${var.subnet_count}"
-  subnet_id = "${element(aws_subnet.subnet.*.id, count.index)}"
+  count          = "${var.subnet_count}"
+  subnet_id      = "${element(aws_subnet.subnet.*.id, count.index)}"
   route_table_id = "${aws_route_table.rtb.id}"
-
 }
 
 # SECURITY GROUPS #
 
 resource "aws_security_group" "elb-sg" {
-  name        = "nginx_elb_sg"
-  vpc_id      = "${aws_vpc.vpc.id}"
+  name   = "nginx_elb_sg"
+  vpc_id = "${aws_vpc.vpc.id}"
 
   # Allow HTTP access from anywhere
   ingress {
@@ -116,7 +117,7 @@ resource "aws_security_group" "elb-sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
+
   # outbound internet access
   egress {
     from_port   = 0
@@ -124,17 +125,18 @@ resource "aws_security_group" "elb-sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags {
-    Name = "${var.environment_tag}-elb-sg"
+    Name        = "${var.environment_tag}-elb-sg"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
 }
 
 resource "aws_security_group" "nginx-sg" {
-  name      = "nginx_sg"
-  vpc_id    = "${aws_vpc.vpc.id}"
-  
+  name   = "nginx_sg"
+  vpc_id = "${aws_vpc.vpc.id}"
+
   # SSH access from anywhere
   ingress {
     from_port   = 22
@@ -142,7 +144,7 @@ resource "aws_security_group" "nginx-sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
+
   # HTTP access from anywhere
   ingress {
     from_port   = 80
@@ -150,7 +152,7 @@ resource "aws_security_group" "nginx-sg" {
     protocol    = "tcp"
     cidr_blocks = ["${var.network_address_space}"]
   }
-  
+
   # outbound internet access
   egress {
     from_port   = 0
@@ -158,8 +160,9 @@ resource "aws_security_group" "nginx-sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags {
-    Name = "${var.environment_tag}-nginx-sg"
+    Name        = "${var.environment_tag}-nginx-sg"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
@@ -168,19 +171,20 @@ resource "aws_security_group" "nginx-sg" {
 # LOAD BALANCER #
 resource "aws_elb" "web" {
   name = "nginx-elb"
-  
+
   subnets         = ["${aws_subnet.subnet.*.id}"]
   security_groups = ["${aws_security_group.elb-sg.id}"]
   instances       = ["${aws_instance.nginx.*.id}"]
-    
+
   listener {
     instance_port     = 80
     instance_protocol = "http"
     lb_port           = 80
-    lb_protocol       = "http"  
+    lb_protocol       = "http"
   }
+
   tags {
-    Name = "${var.environment_tag}-elb"
+    Name        = "${var.environment_tag}-elb"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
   }
@@ -189,18 +193,18 @@ resource "aws_elb" "web" {
 # INSTANCES #
 
 resource "aws_instance" "nginx" {
-  count = "${var.instance_count}"
-  ami   = "ami-c58c1dd3"
-  instance_type = "t2.micro"
-  subnet_id     = "${element(aws_subnet.subnet.*.id, count.index % var.subnet_count)}"
+  count                  = "${var.instance_count}"
+  ami                    = "ami-c58c1dd3"
+  instance_type          = "t2.micro"
+  subnet_id              = "${element(aws_subnet.subnet.*.id, count.index % var.subnet_count)}"
   vpc_security_group_ids = ["${aws_security_group.nginx-sg.id}"]
   key_name               = "${var.key_name}"
-  
+
   connection {
     user        = "ec2-user"
     private_key = "${file(var.private_key_path)}"
   }
-  
+
   provisioner "file" {
     content = <<EOF
 access_key = ${aws_iam_access_key.write_user.id}
@@ -209,9 +213,10 @@ use_https = True
 bucket_location = US
 
 EOF
+
     destination = "/home/ec2-user/.s3cfg"
   }
-  
+
   provisioner "file" {
     content = <<EOF
 /var/log/nginx/*log {
@@ -228,8 +233,9 @@ EOF
 }
 
 EOF
+
     destination = "/home/ec2-user/nginx"
-}
+  }
 
   provisioner "remote-exec" {
     inline = [
@@ -242,21 +248,20 @@ EOF
       "s3cmd get s3://${aws_s3_bucket.web_bucket.id}/website/Globo_logo_Vert.png .",
       "sudo cp /home/ec2-user/index.html /usr/share/nginx/html/index.html",
       "sudo cp /home/ec2-user/Globo_logo_Vert.png /usr/share/nginx/html/Globo_logo_Vert.png",
-      "sudo logrotate -f /etc/logrotate.conf"
-       
-      ]
+      "sudo logrotate -f /etc/logrotate.conf",
+    ]
   }
-  
-tags {
-  Name = "${var.environment_tag}-nginx1"
-  BillingCode = "${var.billing_code_tag}"
-  Environment = "${var.environment_tag}"
+
+  tags {
+    Name        = "${var.environment_tag}-nginx1"
+    BillingCode = "${var.billing_code_tag}"
+    Environment = "${var.environment_tag}"
   }
 }
 
 # S3 Bucket config#
 resource "aws_iam_user" "write_user" {
-  name = "${var.environment_tag}-s3-write-user"
+  name          = "${var.environment_tag}-s3-write-user"
   force_destroy = true
 }
 
@@ -267,6 +272,7 @@ resource "aws_iam_access_key" "write_user" {
 resource "aws_iam_user_policy" "write_user_pol" {
   name = "write"
   user = "${aws_iam_user.write_user.name}"
+
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -282,16 +288,14 @@ resource "aws_iam_user_policy" "write_user_pol" {
   ]
 }
 EOF
-
 }
 
-
 resource "aws_s3_bucket" "web_bucket" {
-  bucket = "${var.environment_tag}-${var.bucket_name}"
-  acl = "private"
+  bucket        = "${var.environment_tag}-${var.bucket_name}"
+  acl           = "private"
   force_destroy = true
-  
-      policy = <<EOF
+
+  policy = <<EOF
 { 
     "Version": "2008-10-17",
     "Statement": [
@@ -321,18 +325,16 @@ resource "aws_s3_bucket" "web_bucket" {
 EOF
 
   tags {
-    Name = "${var.environment_tag}-web_bucket"
+    Name        = "${var.environment_tag}-web_bucket"
     BillingCode = "${var.billing_code_tag}"
     Environment = "${var.environment_tag}"
-    }
-
+  }
 }
 
 resource "aws_s3_bucket_object" "website" {
   bucket = "${aws_s3_bucket.web_bucket.bucket}"
   key    = "/website/index.html"
   source = "./index.html"
-
 }
 
 resource "aws_s3_bucket_object" "graphic" {
@@ -347,5 +349,4 @@ resource "aws_s3_bucket_object" "graphic" {
 
 output "aws_elb_public_dns" {
   value = "${aws_elb.web.dns_name}"
-
 }
